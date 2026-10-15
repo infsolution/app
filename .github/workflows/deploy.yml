@@ -1,0 +1,127 @@
+name: Deploy Next.js
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-nextjs-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy na VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configurar SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Executar deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+
+        run: |
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            "$VPS_USER@$VPS_HOST" \
+            'bash -lc "bash -s"' <<'REMOTE'
+
+          set -Eeuo pipefail
+
+          # AJUSTE ESTES DOIS VALORES
+          APP_DIR="/var/www/app"
+          PM2_APP="app"
+
+          cd "$APP_DIR"
+
+          echo "Iniciando deploy..."
+          echo "Diretório: $APP_DIR"
+          echo "Processo PM2: $PM2_APP"
+
+          # Verificar a branch
+          BRANCH=$(git branch --show-current)
+
+          if [ "$BRANCH" != "main" ]; then
+            echo "ERRO: a aplicação não está na branch main."
+            exit 1
+          fi
+
+          # Atualizar código
+          git fetch origin main
+          git pull --ff-only origin main
+
+          # Verificar ambiente
+          node -v
+          npm -v
+
+          # Instalar dependências
+          npm ci
+
+          # Preservar o build atual para permitir rollback
+          BACKUP_DIR=""
+
+          if [ -d .next ]; then
+            BACKUP_DIR=$(mktemp -d)
+            cp -a .next "$BACKUP_DIR/next"
+          fi
+
+          # Restaurar o build anterior se a compilação falhar
+          rollback_build() {
+            STATUS=$?
+
+            if [ "$STATUS" -ne 0 ] && [ -n "$BACKUP_DIR" ]; then
+              echo "Falha no deploy. Restaurando build anterior..."
+
+              rm -rf .next
+              cp -a "$BACKUP_DIR/next" .next
+            fi
+
+            if [ -n "$BACKUP_DIR" ]; then
+              rm -rf "$BACKUP_DIR"
+            fi
+
+            exit "$STATUS"
+          }
+
+          trap rollback_build EXIT
+
+          # Compilar Next.js
+          npm run build
+
+          # Reiniciar somente após o build bem-sucedido
+          pm2 restart "$PM2_APP"
+
+          # Confirmar estado do processo
+          pm2 describe "$PM2_APP"
+
+          # Limpar backup
+          trap - EXIT
+
+          if [ -n "$BACKUP_DIR" ]; then
+            rm -rf "$BACKUP_DIR"
+          fi
+
+          echo "Deploy concluído com sucesso!"
+
+          REMOTE
