@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy na VPS
+    name: Deploy na VPS Next
     runs-on: ubuntu-latest
 
     steps:
