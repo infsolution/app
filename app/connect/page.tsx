@@ -22,7 +22,7 @@ export default function ConnectPage() {
   useEffect(() => {
     if (!FB_APP_ID || !FB_CONFIG_ID) {
       setError(
-        "Configuração incompleta: defina NEXT_PUBLIC_FB_APP_ID e NEXT_PUBLIC_FB_CONFIG_ID no .env.local"
+        "Configuração incompleta: defina NEXT_PUBLIC_FB_APP_ID e NEXT_PUBLIC_FB_CONFIG_ID no .env.local",
       );
       setStatus("error");
       return;
@@ -38,7 +38,9 @@ export default function ConnectPage() {
         setStatus("idle");
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Falha ao carregar Facebook SDK");
+        setError(
+          err instanceof Error ? err.message : "Falha ao carregar Facebook SDK",
+        );
         setStatus("error");
       }
     })();
@@ -49,49 +51,23 @@ export default function ConnectPage() {
   }, []);
 
   async function handleConnect() {
-    console.log("[Connect] handleConnect called, status:", status);
     setError(null);
     setStatus("connecting");
-
     try {
-      await loginWithWhatsApp(FB_CONFIG_ID, async (response) => {
-        console.log("[Connect] Callback received response:", response);
-        const code = response.authResponse?.code;
-        if (!code) {
-          const msg =
-            response.authResponse?.error_message ||
-            response.authResponse?.error ||
-            "Código não recebido";
-          console.error("[Connect] No code received:", msg);
-          setError(msg);
-          setStatus("error");
-          return;
-        }
-
-        console.log("[Connect] Exchanging code:", code);
-        const data = await exchangeCode(code);
-        console.log("[Connect] Exchange successful:", data);
-        setResult({
-          waba_id: data.waba_id,
-          phone_number_id: data.phone_number_id,
-        });
-        if (typeof window !== "undefined") {
-          localStorage.setItem("waba_id", data.waba_id);
-          localStorage.setItem("phone_number_id", data.phone_number_id);
-        }
-        setStatus("success");
+      const response = await loginWithWhatsApp(FB_CONFIG_ID);
+      const code = response.authResponse?.code;
+      if (!code) throw new Error("Código não recebido");
+      const data = await exchangeCode(code);
+      setResult({
+        waba_id: data.waba_id,
+        phone_number_id: data.phone_number_id,
       });
+      localStorage.setItem("waba_id", data.waba_id);
+      localStorage.setItem("phone_number_id", data.phone_number_id);
+      setStatus("success");
     } catch (err) {
-      console.error("[Connect] Error caught:", err, JSON.stringify(err, null, 2));
-      const errorMessage = err instanceof Error ? err.message : "Erro ao conectar";
-      // Provide helpful message for HTTPS requirement
-      if (errorMessage.includes("HTTPS") || errorMessage.includes("http pages")) {
-        setError(
-          "Facebook Login requer HTTPS. Em desenvolvimento local, use ngrok (ngrok http 3002) ou faça deploy em Vercel/Netlify para obter URL segura."
-        );
-      } else {
-        setError(errorMessage);
-      }
+      const msg = err instanceof Error ? err.message : "Erro ao conectar";
+      setError(msg);
       setStatus("error");
     }
   }
@@ -131,10 +107,8 @@ export default function ConnectPage() {
         }
         className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {status === "loading" && "Carregando SDK..."
-        }
-        {status === "connecting" && "Conectando..."
-        }
+        {status === "loading" && "Carregando SDK..."}
+        {status === "connecting" && "Conectando..."}
         {status === "success" && "Conectado"}
         {status === "idle" && "Conectar WhatsApp"}
       </button>
