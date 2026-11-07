@@ -82,7 +82,7 @@ export default function ConnectPage() {
         setStatus("success");
       });
     } catch (err) {
-      console.error("[Connect] Error caught:", err);
+      console.error("[Connect] Error caught:", err, JSON.stringify(err, null, 2));
       const errorMessage = err instanceof Error ? err.message : "Erro ao conectar";
       // Provide helpful message for HTTPS requirement
       if (errorMessage.includes("HTTPS") || errorMessage.includes("http pages")) {

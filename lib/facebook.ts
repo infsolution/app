@@ -70,32 +70,44 @@ export function loginWithWhatsApp(
       return;
     }
 
+    // Check if FB.login exists
+    if (typeof window.FB.login !== "function") {
+      console.error("[FB] FB.login is not a function:", typeof window.FB.login);
+      reject(new Error("FB.login is not available. Check Facebook SDK version."));
+      return;
+    }
+
     console.log("[FB] Calling FB.login with config_id:", configId);
     
-    window.FB.login(
-      {
-        config_id: configId,
-        response_type: "code",
-        override_default_response_type: true,
-        extras: {
-          setup: {},
+    try {
+      window.FB.login(
+        {
+          config_id: configId,
+          response_type: "code",
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+          },
         },
-      },
-      (response: WhatsAppLoginResult) => {
-        console.log("[FB] FB.login response:", response);
-        callback(response);
-        if (response.authResponse?.error) {
-          console.error("[FB] Login error:", response.authResponse);
-          reject(
-            new Error(
-              response.authResponse.error_message || response.authResponse.error
-            )
-          );
-        } else {
-          console.log("[FB] Login resolved successfully");
-          resolve();
+        (response: WhatsAppLoginResult) => {
+          console.log("[FB] FB.login response:", response);
+          callback(response);
+          if (response.authResponse?.error) {
+            console.error("[FB] Login error:", response.authResponse);
+            reject(
+              new Error(
+                response.authResponse.error_message || response.authResponse.error
+              )
+            );
+          } else {
+            console.log("[FB] Login resolved successfully");
+            resolve();
+          }
         }
-      }
-    );
+      );
+    } catch (err) {
+      console.error("[FB] FB.login threw synchronously:", err);
+      reject(err);
+    }
   });
 }
