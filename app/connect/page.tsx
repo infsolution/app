@@ -49,23 +49,28 @@ export default function ConnectPage() {
   }, []);
 
   async function handleConnect() {
+    console.log("[Connect] handleConnect called, status:", status);
     setError(null);
     setStatus("connecting");
 
     try {
       await loginWithWhatsApp(FB_CONFIG_ID, async (response) => {
+        console.log("[Connect] Callback received response:", response);
         const code = response.authResponse?.code;
         if (!code) {
           const msg =
             response.authResponse?.error_message ||
             response.authResponse?.error ||
             "Código não recebido";
+          console.error("[Connect] No code received:", msg);
           setError(msg);
           setStatus("error");
           return;
         }
 
+        console.log("[Connect] Exchanging code:", code);
         const data = await exchangeCode(code);
+        console.log("[Connect] Exchange successful:", data);
         setResult({
           waba_id: data.waba_id,
           phone_number_id: data.phone_number_id,
@@ -77,7 +82,16 @@ export default function ConnectPage() {
         setStatus("success");
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao conectar");
+      console.error("[Connect] Error caught:", err);
+      const errorMessage = err instanceof Error ? err.message : "Erro ao conectar";
+      // Provide helpful message for HTTPS requirement
+      if (errorMessage.includes("HTTPS") || errorMessage.includes("http pages")) {
+        setError(
+          "Facebook Login requer HTTPS. Em desenvolvimento local, use ngrok (ngrok http 3002) ou faça deploy em Vercel/Netlify para obter URL segura."
+        );
+      } else {
+        setError(errorMessage);
+      }
       setStatus("error");
     }
   }
