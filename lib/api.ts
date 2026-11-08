@@ -9,6 +9,7 @@ interface ApiError {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${BACKEND_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  console.log("URL: " + BACKEND_URL);
   const response = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
