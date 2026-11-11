@@ -95,55 +95,53 @@ export function loginWithWhatsApp(
       return;
     }
 
-    if (
-      window.location.protocol === "http:" &&
-      window.location.hostname !== "localhost"
-    ) {
-      reject(new Error("Facebook Login requires HTTPS"));
-      return;
-    }
-
-    console.log("[FB] Calling FB.login with config_id:", configId);
-
     let capturedWabaId: string | null = null;
     let capturedPhoneId: string | null = null;
+    let capturedBusinessId: string | null = null;
+    let loginResponse: WhatsAppLoginResult | null = null;
     let settled = false;
 
     const cleanup = () => {
       window.removeEventListener("message", onMessage);
+      if (timeoutId) clearTimeout(timeoutId);
     };
 
-    const finishSuccess = (response: WhatsAppLoginResult) => {
-      if (settled) return;
+    const tryFinish = () => {
+      // Só resolve quando tem os 2: code + waba_id
+      if (settled || !loginResponse || !capturedWabaId) return;
       settled = true;
       cleanup();
-      console.log(
-        "[FB] Captured WABA:",
-        capturedWabaId,
-        "Phone:",
-        capturedPhoneId,
-      );
       resolve({
-        ...response,
+        ...loginResponse,
         waba_id: capturedWabaId,
         phone_number_id: capturedPhoneId,
-      });
+        business_id: capturedBusinessId,
+      } as any);
     };
 
-    const finishError = (err: Error) => {
+    // Se o evento demorar, não trava a tela pra sempre:
+    // resolve com o que tem depois de 10s, mas loga o problema
+    const timeoutId = setTimeout(() => {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(err);
-    };
+      console.warn("[FB] Timeout esperando WA_EMBEDDED_SIGNUP", {
+        capturedWabaId,
+        capturedPhoneId,
+      });
+      // Aqui você vai ver que o problema é o evento, não o code
+      if (loginResponse)
+        resolve({
+          ...loginResponse,
+          waba_id: capturedWabaId,
+          phone_number_id: capturedPhoneId,
+        } as any);
+      else reject(new Error("Timeout no Embedded Signup"));
+    }, 10000);
 
     const onMessage = (event: MessageEvent) => {
-      // A Meta manda de facebook.com OU de business.facebook.com
-      if (!event.origin.includes("facebook.com")) {
-        return;
-      }
+      if (!event.origin.includes("facebook.com")) return;
 
-      // event.data pode vir como string OU como objeto. Trata os 2.
       let data: any = event.data;
       if (typeof data === "string") {
         try {
@@ -152,24 +150,27 @@ export function loginWithWhatsApp(
           return;
         }
       }
-
       if (!data || data.type !== "WA_EMBEDDED_SIGNUP") return;
 
       console.log("[FB] Embedded Signup event:", data);
-
-      // A Meta manda em 2 formatos diferentes dependendo da versão:
-      // { data: { waba_id, phone_number_id } } OU { waba_id, phone_number_id }
       const payload = data.data || data;
-      capturedWabaId = payload.waba_id || payload.wabaId || capturedWabaId;
+
+      capturedWabaId =
+        payload.waba_id || payload.wabaId || payload.asset_id || capturedWabaId;
       capturedPhoneId =
         payload.phone_number_id || payload.phoneNumberId || capturedPhoneId;
+      capturedBusinessId =
+        payload.business_id || payload.businessId || capturedBusinessId;
 
-      // Fallback: as vezes vem dentro de sessionInfo
       if (payload.sessionInfo) {
         capturedWabaId = payload.sessionInfo.waba_id || capturedWabaId;
         capturedPhoneId =
           payload.sessionInfo.phone_number_id || capturedPhoneId;
+        capturedBusinessId =
+          payload.sessionInfo.business_id || capturedBusinessId;
       }
+
+      tryFinish();
     };
 
     window.addEventListener("message", onMessage);
@@ -177,29 +178,31 @@ export function loginWithWhatsApp(
     window.FB.login(
       (response: WhatsAppLoginResult) => {
         console.log("[FB] FB.login response:", response);
-        if (response.authResponse?.error) {
-          finishError(
-            new Error(
-              response.authResponse.error_message ||
-                response.authResponse.error ||
-                "Erro no login",
-            ),
-          );
-        } else if (!response.authResponse?.code) {
-          finishError(new Error("Código não recebido"));
-        } else {
-          // Dá 500ms pro evento WA_EMBEDDED_SIGNUP chegar antes de resolver
-          // Senão o waba_id chega depois do resolve e se perde
-          setTimeout(() => finishSuccess(response), 500);
+        if ((response as any).authResponse?.error) {
+          if (!settled) {
+            settled = true;
+            cleanup();
+            reject(new Error("Erro no login"));
+          }
+          return;
         }
+        if (!(response as any).authResponse?.code) {
+          if (!settled) {
+            settled = true;
+            cleanup();
+            reject(new Error("Código não recebido"));
+          }
+          return;
+        }
+        // NÃO resolve aqui. Guarda e espera o evento.
+        loginResponse = response;
+        tryFinish();
       },
       {
         config_id: configId,
         response_type: "code",
         override_default_response_type: true,
-        extras: {
-          setup: {},
-        },
+        extras: { setup: {} },
       },
     );
   });

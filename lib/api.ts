@@ -39,10 +39,18 @@ export interface AuthExchangeResponse {
   access_token?: string;
 }
 
-export function exchangeCode(code: string): Promise<AuthExchangeResponse> {
+type ExchangeCodePayload = {
+  code: string;
+  waba_id?: string | null;
+  phone_number_id?: string | null;
+  business_id?: string | null;
+};
+export function exchangeCode(
+  payload: ExchangeCodePayload,
+): Promise<AuthExchangeResponse> {
   return request<AuthExchangeResponse>("/auth/exchange-code", {
     method: "POST",
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(payload),
   });
 }
 

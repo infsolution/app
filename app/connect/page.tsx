@@ -57,7 +57,22 @@ export default function ConnectPage() {
       const response = await loginWithWhatsApp(FB_CONFIG_ID);
       const code = response.authResponse?.code;
       if (!code) throw new Error("Código não recebido");
-      const data = await exchangeCode(code);
+
+      // NÃO descarta o que o login capturou
+      console.log("[Connect] login retornou:", {
+        code: code.substring(0, 8),
+        waba_id: (response as any).waba_id,
+        phone_number_id: (response as any).phone_number_id,
+        business_id: (response as any).business_id,
+      });
+
+      const data = await exchangeCode({
+        code,
+        waba_id: (response as any).waba_id,
+        phone_number_id: (response as any).phone_number_id,
+        business_id: (response as any).business_id,
+      });
+
       setResult({
         waba_id: data.waba_id,
         phone_number_id: data.phone_number_id,
